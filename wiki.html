@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>나만의 위키 — 한국사 탐험</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a href="#main" class="skip-link">본문 바로가기</a>
+  <nav id="navbar"></nav>
+
+  <main id="main" class="container">
+    <div class="page-header">
+      <h1>나만의 위키</h1>
+      <div class="page-actions">
+        <button class="btn btn-primary" id="btn-add" aria-label="새 항목 추가">+ 추가</button>
+        <button class="btn btn-outline" id="btn-toggle-view" aria-label="그래프 보기 전환">
+          <span id="view-label">관계도 보기</span>
+        </button>
+        <button class="btn btn-outline btn-sm" id="btn-reset" aria-label="데이터 초기화">초기화</button>
+      </div>
+    </div>
+
+    <div id="list-view">
+      <div class="search-bar">
+        <input type="text" id="search-input" placeholder="제목, 설명, 태그 검색..." aria-label="위키 검색">
+      </div>
+      <div class="filter-section">
+        <div class="filter-tabs" id="era-tabs" role="tablist" aria-label="시대 필터"></div>
+        <div class="filter-tabs" id="cat-tabs" role="tablist" aria-label="분류 필터"></div>
+      </div>
+      <div id="card-grid" class="card-grid" role="list" aria-live="polite"></div>
+      <div id="no-results" class="no-results" hidden>검색 결과가 없습니다.</div>
+    </div>
+
+  </main>
+
+  <div id="graph-view" class="graph-container" hidden>
+    <button class="btn btn-outline graph-back-btn" id="btn-graph-back">← 카드 보기</button>
+    <svg id="graph-svg" aria-label="한국사 관계도"></svg>
+  </div>
+
+  <footer id="footer"></footer>
+
+  <script src="data/wiki.js"></script>
+  <script src="js/common.js"></script>
+  <script src="js/wiki.js"></script>
+</body>
+</html>

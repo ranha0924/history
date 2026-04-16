@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>한국사 탐험</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a href="#main" class="skip-link">본문 바로가기</a>
+  <nav id="navbar"></nav>
+
+  <main id="main">
+    <section class="hero">
+      <h1>한국사 탐험</h1>
+      <p class="hero-subtitle">고조선부터 근현대까지, 한국 역사를 탐험하고 배워보세요</p>
+    </section>
+
+    <section class="entry-cards">
+      <a href="wiki.html" class="entry-card entry-card-wiki">
+        <h2>나만의 위키</h2>
+        <p>한국사 주요 인물 · 사건 · 제도 · 문화를 카드로 정리하고 연결망으로 탐색하세요</p>
+      </a>
+      <a href="news.html" class="entry-card entry-card-news">
+        <h2>오늘의 역사</h2>
+        <p>오늘 날짜에 일어났던 역사적 사건을 뉴스처럼 읽어보세요</p>
+      </a>
+    </section>
+
+    <section class="today-preview" id="today-preview" aria-live="polite"></section>
+  </main>
+
+  <footer id="footer"></footer>
+
+  <script src="data/news.js"></script>
+  <script src="js/common.js"></script>
+  <script src="js/index.js"></script>
+</body>
+</html>

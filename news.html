@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>오늘의 역사 — 한국사 탐험</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a href="#main" class="skip-link">본문 바로가기</a>
+  <nav id="navbar"></nav>
+
+  <main id="main" class="container">
+    <div class="page-header">
+      <h1>역사 속 오늘의 뉴스</h1>
+      <span class="page-subtitle" id="date-display"></span>
+    </div>
+
+    <div class="date-picker-section">
+      <label for="month-select">월</label>
+      <select id="month-select" aria-label="월 선택"></select>
+      <label for="day-select">일</label>
+      <select id="day-select" aria-label="일 선택"></select>
+      <button class="btn btn-outline btn-sm" id="btn-today" aria-label="오늘 날짜로 이동">오늘</button>
+      <button class="btn btn-outline btn-sm" id="btn-all" aria-label="전체 사건 보기">전체 보기</button>
+    </div>
+
+    <section id="news-list" aria-live="polite"></section>
+    <section id="full-list" hidden></section>
+  </main>
+
+  <footer id="footer"></footer>
+
+  <script src="data/news.js"></script>
+  <script src="js/common.js"></script>
+  <script src="js/news.js"></script>
+</body>
+</html>
