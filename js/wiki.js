@@ -309,21 +309,18 @@
     }
   }
 
-  /* ========== Era Band Map (관계도) ========== */
+  /* ========== Radial Map (관계도: 부채꼴) ========== */
 
-  const BAND = {
-    PAD: 20,          /* 좌우 여백 */
-    TOP_PAD: 64,      /* 뒤로가기 버튼 아래에서 시작 */
-    HEADER_H: 34,
-    HEADER_GAP: 12,
-    CAT_COL_W: 46,    /* 분류 라벨 열 너비 */
-    CARD_H: 30,
+  const RAD = {
+    ROOT_R: 44,                       /* 루트 원 반지름 */
+    ERA_R: 140,                       /* 시대 노드가 놓이는 반지름 */
+    CARD_R0: 230,                     /* 첫 카드 링 반지름 */
+    RING_GAP: 44,                     /* 링 사이 간격 */
+    SECTOR_PAD: 0.045,                /* 부채꼴 양끝 여백 (rad) */
+    MIN_ANGLE: 32 * Math.PI / 180,    /* 항목이 적은 시대의 최소 각도 */
+    CARD_H: 28,
     CARD_PAD_X: 22,
-    CARD_GAP_X: 8,
-    CARD_GAP_Y: 8,
-    CAT_GAP_Y: 14,    /* 분류 블록 사이 */
-    BAND_PAD_B: 10,
-    BAND_GAP: 18,
+    GAP: 10,                          /* 같은 링의 카드 사이 여백(px) */
     FONT: "'Pretendard', system-ui, sans-serif"
   };
 
@@ -350,7 +347,7 @@
     }
     const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
     t.setAttribute('font-size', fontSize);
-    t.setAttribute('font-family', BAND.FONT);
+    t.setAttribute('font-family', RAD.FONT);
     t.textContent = str;
     _measureSvg.appendChild(t);
     const w = t.getComputedTextLength();
@@ -386,51 +383,100 @@
     return map;
   }
 
-  /* ----- 레이아웃: 시대 밴드 안에서 카드를 여러 행으로 감아서 채움 ----- */
+  /* ----- 부채꼴 레이아웃 -----
+     루트를 중심에 두고 시대를 항목 수에 비례한 각도의 부채꼴로 배치.
+     각 부채꼴 안에서 카드는 반지름을 늘려가며 여러 겹의 호(링)로 감는다. */
 
-  function layoutBands(width) {
-    const flowX0 = BAND.PAD + BAND.CAT_COL_W;
-    const flowMaxX = width - BAND.PAD;
-    const bands = [];
-    const cards = [];
-    let y = BAND.TOP_PAD;
+  function sectorAngles(eras) {
+    const TWO_PI = Math.PI * 2;
+    const weights = eras.map(e => e.collapsed ? 2 : Math.max(e.items.length, 2));
+    const sumW = weights.reduce((s, w) => s + w, 0);
+    let spans = weights.map(w => (w / sumW) * TWO_PI);
+    /* 최소 각도 보장: 작은 부채꼴을 올려주고 큰 부채꼴에서 회수 */
+    const deficit = spans.reduce((s, sp) => s + Math.max(0, RAD.MIN_ANGLE - sp), 0);
+    const surplus = spans.reduce((s, sp) => s + Math.max(0, sp - RAD.MIN_ANGLE), 0);
+    spans = spans.map(sp => sp < RAD.MIN_ANGLE
+      ? RAD.MIN_ANGLE
+      : sp - (sp - RAD.MIN_ANGLE) / surplus * deficit);
+    return spans;
+  }
 
-    ERA_ORDER.forEach(era => {
-      const items = wikiItems.filter(i => i.era === era);
-      if (items.length === 0) return;
-      const collapsed = !!eraCollapsed[era];
-      const band = { era, y0: y, count: items.length, collapsed, catLabels: [] };
-      y += BAND.HEADER_H + (collapsed ? 0 : BAND.HEADER_GAP);
+  /* 여백(GAP)을 포함해 이미 놓인 알약들과 겹치는지 검사 */
+  function collides(rects, cx, cy, w, h) {
+    const m = RAD.GAP / 2;
+    const x = cx - w / 2, y = cy - h / 2;
+    for (let i = 0; i < rects.length; i++) {
+      const p = rects[i];
+      if (x - m < p.x + p.w && p.x - m < x + w && y - m < p.y + p.h && p.y - m < y + h) return true;
+    }
+    return false;
+  }
 
-      if (!collapsed) {
-        CAT_ORDER.forEach(cat => {
-          const catItems = items.filter(i => i.category === cat);
-          if (catItems.length === 0) return;
-          band.catLabels.push({ label: cat, y: y + BAND.CARD_H / 2 });
-          let cx = flowX0;
-          let rowY = y;
-          catItems.forEach(item => {
-            const w = Math.max(
-              measureText(item.title, item.importance === 1 ? 11 : 12) + BAND.CARD_PAD_X,
-              64
-            );
-            if (cx + w > flowMaxX && cx > flowX0) {
-              cx = flowX0;
-              rowY += BAND.CARD_H + BAND.CARD_GAP_Y;
+  function layoutRadial() {
+    const placedRects = [];
+    const eras = ERA_ORDER
+      .map(era => ({
+        era,
+        items: wikiItems.filter(i => i.era === era)
+          .sort((a, b) => CAT_ORDER.indexOf(a.category) - CAT_ORDER.indexOf(b.category)),
+        collapsed: !!eraCollapsed[era]
+      }))
+      .filter(e => e.items.length > 0);
+
+    const spans = sectorAngles(eras);
+    const nodes = [];
+    let angle = -Math.PI / 2; /* 12시 방향부터 시계 방향 */
+    let minX = -RAD.ROOT_R, maxX = RAD.ROOT_R, minY = -RAD.ROOT_R, maxY = RAD.ROOT_R;
+
+    eras.forEach((e, ei) => {
+      const a0 = angle + RAD.SECTOR_PAD;
+      const a1 = angle + spans[ei] - RAD.SECTOR_PAD;
+      const mid = (a0 + a1) / 2;
+      const eraNode = {
+        era: e.era, collapsed: e.collapsed, count: e.items.length,
+        cx: Math.cos(mid) * RAD.ERA_R, cy: Math.sin(mid) * RAD.ERA_R,
+        cards: []
+      };
+
+      if (!e.collapsed) {
+        /* 링을 따라 각도를 조금씩 전진시키며, 이미 놓인 카드와의 실제 사각형 충돌이
+           없는 첫 위치에 배치. 링이 꽉 차면 반지름을 키워 다음 링으로 넘어간다. */
+        let r = RAD.CARD_R0;
+        let cursor = a0;
+        e.items.forEach(item => {
+          const w = Math.max(
+            measureText(item.title, item.importance === 1 ? 11 : 12) + RAD.CARD_PAD_X, 64);
+          const half = () => (w / 2 + 4) / r; /* 알약의 대략적 각도 반폭 */
+          let a = Math.max(cursor, a0 + half());
+          for (;;) {
+            if (a + half() > a1) {
+              r += RAD.RING_GAP; cursor = a0;
+              a = a0 + half();
+              if (r > 2200) break; /* 안전장치: 그냥 현재 위치에 배치 */
+              continue;
             }
-            cards.push({ item, x: cx, y: rowY, w, h: BAND.CARD_H });
-            cx += w + BAND.CARD_GAP_X;
-          });
-          y = rowY + BAND.CARD_H + BAND.CAT_GAP_Y;
+            const cx = Math.cos(a) * r;
+            const cy = Math.sin(a) * r;
+            if (!collides(placedRects, cx, cy, w, RAD.CARD_H)) break;
+            a += 10 / r; /* 10px 단위로 전진하며 빈자리 탐색 */
+          }
+          const cx = Math.cos(a) * r;
+          const cy = Math.sin(a) * r;
+          eraNode.cards.push({ item, cx, cy, w, h: RAD.CARD_H });
+          placedRects.push({ x: cx - w / 2, y: cy - RAD.CARD_H / 2, w, h: RAD.CARD_H });
+          cursor = a;
+          minX = Math.min(minX, cx - w / 2); maxX = Math.max(maxX, cx + w / 2);
+          minY = Math.min(minY, cy - RAD.CARD_H / 2); maxY = Math.max(maxY, cy + RAD.CARD_H / 2);
         });
-        y += BAND.BAND_PAD_B - BAND.CAT_GAP_Y;
       }
-      band.y1 = y;
-      y += BAND.BAND_GAP;
-      bands.push(band);
+      minX = Math.min(minX, eraNode.cx - 60); maxX = Math.max(maxX, eraNode.cx + 60);
+      minY = Math.min(minY, eraNode.cy - 30); maxY = Math.max(maxY, eraNode.cy + 30);
+      nodes.push(eraNode);
+      angle += spans[ei];
     });
 
-    return { bands, cards, height: y + BAND.PAD };
+    const PAD = 60;
+    return { nodes, bounds: { minX: minX - PAD, maxX: maxX + PAD, minY: minY - PAD, maxY: maxY + PAD } };
   }
 
   /* ----- 렌더링 ----- */
@@ -443,7 +489,7 @@
     return `M${x1},${y1} Q${mx - dy / len * off},${my + dx / len * off} ${x2},${y2}`;
   }
 
-  function renderBands(svg, layout) {
+  function renderRadial(svg, layout) {
     svg.innerHTML = '';
     graphCards = {};
 
@@ -460,96 +506,101 @@
     ].join('');
     svg.appendChild(styleEl);
 
-    const bgGroup = svgEl('g', { class: 'band-bgs' });
-    const edgeGroup = svgEl('g', { class: 'band-edges' });
+    const linkGroup = svgEl('g', { class: 'band-links' });   /* 시대→카드 연결선 */
+    const edgeGroup = svgEl('g', { class: 'band-edges' });   /* 관계 하이라이트 선 */
     const nodeGroup = svgEl('g', { class: 'band-nodes' });
-    svg.appendChild(bgGroup);
+    svg.appendChild(linkGroup);
     svg.appendChild(edgeGroup);
     svg.appendChild(nodeGroup);
 
-    const width = parseFloat(svg.getAttribute('viewBox').split(' ')[2]);
+    layout.nodes.forEach(en => {
+      const color = ERA_COLORS[en.era] || '#1A1A1A';
 
-    layout.bands.forEach(band => {
-      const color = ERA_COLORS[band.era] || '#1A1A1A';
-
-      /* 밴드 배경 */
-      bgGroup.appendChild(svgEl('rect', {
-        x: BAND.PAD - 8, y: band.y0 - 6,
-        width: width - (BAND.PAD - 8) * 2, height: band.y1 - band.y0 + 12,
-        rx: 14, fill: color, opacity: 0.07
+      /* 루트 → 시대 연결선 */
+      linkGroup.appendChild(svgEl('path', {
+        d: bezierEdge(0, 0, en.cx, en.cy),
+        stroke: color, 'stroke-width': 2, fill: 'none', opacity: 0.7
       }));
 
-      /* 밴드 헤더 (클릭 → 접기/펼치기) */
-      const label = (band.collapsed ? '▸ ' : '▾ ') + band.era;
-      const countText = String(band.count);
-      const labelW = measureText(label, 14);
-      const countW = measureText(countText, 11) + 14;
-      const headerW = labelW + countW + 30;
-      const hg = svgEl('g', { class: 'band-header', 'data-era': band.era });
-      hg.appendChild(svgEl('rect', {
-        x: BAND.PAD, y: band.y0, width: headerW, height: 28, rx: 14, fill: color
-      }));
-      const ht = svgEl('text', {
-        x: BAND.PAD + 12, y: band.y0 + 15, fill: '#fff',
-        'font-size': 14, 'font-weight': 600,
-        'dominant-baseline': 'central', 'font-family': BAND.FONT
+      /* 시대 → 카드 연결선 (부챗살) */
+      en.cards.forEach(c => {
+        linkGroup.appendChild(svgEl('line', {
+          x1: en.cx, y1: en.cy, x2: c.cx, y2: c.cy,
+          stroke: color, 'stroke-width': 1, opacity: 0.18
+        }));
       });
-      ht.textContent = label;
-      hg.appendChild(ht);
-      hg.appendChild(svgEl('rect', {
-        x: BAND.PAD + labelW + 20, y: band.y0 + 5, width: countW, height: 18,
+
+      /* 시대 노드 */
+      const label = en.era;
+      const labelW = measureText(label, 14);
+      const countText = String(en.count);
+      const countW = measureText(countText, 11) + 14;
+      const ew = labelW + countW + 30;
+      const eg = svgEl('g', { class: 'band-header', 'data-era': en.era });
+      eg.appendChild(svgEl('rect', {
+        x: en.cx - ew / 2, y: en.cy - 14, width: ew, height: 28, rx: 14,
+        fill: color, opacity: en.collapsed ? 0.55 : 1
+      }));
+      const et = svgEl('text', {
+        x: en.cx - ew / 2 + 12, y: en.cy + 1, fill: '#fff',
+        'font-size': 14, 'font-weight': 600,
+        'dominant-baseline': 'central', 'font-family': RAD.FONT
+      });
+      et.textContent = label;
+      eg.appendChild(et);
+      eg.appendChild(svgEl('rect', {
+        x: en.cx - ew / 2 + labelW + 20, y: en.cy - 9, width: countW, height: 18,
         rx: 9, fill: 'rgba(255,255,255,0.25)'
       }));
-      const hc = svgEl('text', {
-        x: BAND.PAD + labelW + 20 + countW / 2, y: band.y0 + 15, fill: '#fff',
+      const ec = svgEl('text', {
+        x: en.cx - ew / 2 + labelW + 20 + countW / 2, y: en.cy + 1, fill: '#fff',
         'font-size': 11, 'font-weight': 500, 'text-anchor': 'middle',
-        'dominant-baseline': 'central', 'font-family': BAND.FONT
+        'dominant-baseline': 'central', 'font-family': RAD.FONT
       });
-      hc.textContent = countText;
-      hg.appendChild(hc);
-      hg.addEventListener('click', function () { toggleEra(band.era); });
-      nodeGroup.appendChild(hg);
+      ec.textContent = countText;
+      eg.appendChild(ec);
+      eg.addEventListener('click', function () { toggleEra(en.era); });
+      nodeGroup.appendChild(eg);
 
-      /* 분류 라벨 */
-      band.catLabels.forEach(cl => {
+      /* 카드 */
+      en.cards.forEach(c => {
+        const item = c.item;
+        const imp = item.importance;
+        const cg = svgEl('g', { class: 'band-card', 'data-id': item.id });
+        cg.appendChild(svgEl('rect', {
+          x: c.cx - c.w / 2, y: c.cy - c.h / 2, width: c.w, height: c.h, rx: c.h / 2,
+          fill: '#FFFFFF',
+          stroke: imp === 3 ? color : (imp === 1 ? '#E8E8E8' : '#D0D0D0'),
+          'stroke-width': imp === 3 ? 2 : 1
+        }));
         const t = svgEl('text', {
-          x: BAND.PAD + 4, y: cl.y, fill: '#9B9B9B',
-          'font-size': 11, 'font-weight': 500,
-          'dominant-baseline': 'central', 'font-family': BAND.FONT
+          x: c.cx, y: c.cy + 1,
+          fill: imp === 1 ? '#9B9B9B' : '#1A1A1A',
+          'font-size': imp === 1 ? 11 : 12,
+          'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-family': RAD.FONT
         });
-        t.textContent = cl.label;
-        nodeGroup.appendChild(t);
+        t.textContent = item.title;
+        cg.appendChild(t);
+
+        cg.addEventListener('click', function () { openDetailModal(item.id); });
+        cg.addEventListener('mouseenter', function () { showRelations(svg, item.id); });
+        cg.addEventListener('mouseleave', function () { clearRelations(svg); });
+        nodeGroup.appendChild(cg);
+
+        graphCards[item.id] = { cx: c.cx, cy: c.cy, era: item.era, group: cg };
       });
     });
 
-    /* 카드 */
-    layout.cards.forEach(c => {
-      const item = c.item;
-      const color = ERA_COLORS[item.era] || '#1A1A1A';
-      const imp = item.importance;
-      const cg = svgEl('g', { class: 'band-card', 'data-id': item.id });
-      cg.appendChild(svgEl('rect', {
-        x: c.x, y: c.y, width: c.w, height: c.h, rx: c.h / 2,
-        fill: '#FFFFFF',
-        stroke: imp === 3 ? color : (imp === 1 ? '#E8E8E8' : '#D0D0D0'),
-        'stroke-width': imp === 3 ? 2 : 1
-      }));
-      const t = svgEl('text', {
-        x: c.x + c.w / 2, y: c.y + c.h / 2 + 1,
-        fill: imp === 1 ? '#9B9B9B' : '#1A1A1A',
-        'font-size': imp === 1 ? 11 : 12,
-        'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-family': BAND.FONT
-      });
-      t.textContent = item.title;
-      cg.appendChild(t);
-
-      cg.addEventListener('click', function () { openDetailModal(item.id); });
-      cg.addEventListener('mouseenter', function () { showRelations(svg, item.id); });
-      cg.addEventListener('mouseleave', function () { clearRelations(svg); });
-      nodeGroup.appendChild(cg);
-
-      graphCards[item.id] = { cx: c.x + c.w / 2, cy: c.y + c.h / 2, era: item.era, group: cg };
+    /* 루트 노드 */
+    const rg = svgEl('g', { class: 'band-header' });
+    rg.appendChild(svgEl('circle', { cx: 0, cy: 0, r: RAD.ROOT_R, fill: '#1A1A1A' }));
+    const rt = svgEl('text', {
+      x: 0, y: 1, fill: '#fff', 'font-size': 16, 'font-weight': 700,
+      'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-family': RAD.FONT
     });
+    rt.textContent = '한국사';
+    rg.appendChild(rt);
+    nodeGroup.appendChild(rg);
   }
 
   /* ----- 관계 하이라이트: 호버한 카드와 태그를 공유하는 카드를 선으로 연결 ----- */
@@ -565,7 +616,7 @@
 
     rel.forEach(rid => {
       const to = graphCards[rid];
-      if (!to) return; /* 접힌 밴드 안의 항목 */
+      if (!to) return; /* 접힌 부채꼴 안의 항목 */
       to.group.classList.add('lit');
       edgeGroup.appendChild(svgEl('path', {
         class: 'band-edge',
@@ -589,6 +640,15 @@
 
   /* ----- 팬(드래그)·휠 스크롤 ----- */
 
+  function clampVB(x, y, vb, svg) {
+    const b = svg._bounds;
+    if (!b) return [x, y];
+    return [
+      Math.min(Math.max(x, b.minX), Math.max(b.minX, b.maxX - vb[2])),
+      Math.min(Math.max(y, b.minY), Math.max(b.minY, b.maxY - vb[3]))
+    ];
+  }
+
   function setupPanning(svg) {
     let isPanning = false;
     let startX = 0, startY = 0;
@@ -606,18 +666,15 @@
       vb = parseVB();
       svg.style.cursor = 'grabbing';
     }
-    function clampY(y, v) {
-      const maxY = Math.max(0, (svg._contentH || v[3]) - v[3] + 40);
-      return Math.min(Math.max(y, 0), maxY);
-    }
     function onMove(e) {
       if (!isPanning) return;
       e.preventDefault();
       const pt = e.touches ? e.touches[0] : e;
       const rect = svg.getBoundingClientRect();
+      const sx = vb[2] / rect.width;
       const sy = vb[3] / rect.height;
-      const dy = (pt.clientY - startY) * sy;
-      svg.setAttribute('viewBox', `0 ${clampY(vb[1] - dy, vb)} ${vb[2]} ${vb[3]}`);
+      const [x, y] = clampVB(vb[0] - (pt.clientX - startX) * sx, vb[1] - (pt.clientY - startY) * sy, vb, svg);
+      svg.setAttribute('viewBox', `${x} ${y} ${vb[2]} ${vb[3]}`);
     }
     function onEnd() {
       if (!isPanning) return;
@@ -638,27 +695,24 @@
       const v = parseVB();
       const rect = svg.getBoundingClientRect();
       const scale = v[3] / rect.height;
-      const maxY = Math.max(0, (svg._contentH || v[3]) - v[3] + 40);
-      const y = Math.min(Math.max(v[1] + e.deltaY * scale, 0), maxY);
-      svg.setAttribute('viewBox', `0 ${y} ${v[2]} ${v[3]}`);
+      const [x, y] = clampVB(v[0] + e.deltaX * scale, v[1] + e.deltaY * scale, v, svg);
+      svg.setAttribute('viewBox', `${x} ${y} ${v[2]} ${v[3]}`);
     }, { passive: false });
   }
 
   function initGraph() {
     const svg = document.getElementById('graph-svg');
     const rect = svg.getBoundingClientRect();
-    const cw = rect.width || window.innerWidth;
-    const ch = rect.height || window.innerHeight;
+    const cw = Math.max(rect.width || window.innerWidth, 320);
+    const ch = Math.max(rect.height || window.innerHeight, 320);
 
-    /* viewBox를 화면 크기 그대로 두고(1:1 렌더링) 팬·휠로 세로 이동 */
-    const vbW = Math.max(cw, 320);
-    const vbH = Math.max(ch, 320);
-    svg.setAttribute('viewBox', `0 0 ${vbW} ${vbH}`);
-    svg.setAttribute('preserveAspectRatio', 'xMidYMin meet');
+    /* 화면 크기 1:1 뷰박스, 초기 위치는 루트(원점)가 화면 중앙에 오도록 */
+    svg.setAttribute('viewBox', `${-cw / 2} ${-ch / 2} ${cw} ${ch}`);
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
 
-    const layout = layoutBands(vbW);
-    svg._contentH = layout.height;
-    renderBands(svg, layout);
+    const layout = layoutRadial();
+    svg._bounds = layout.bounds;
+    renderRadial(svg, layout);
 
     /* 팬·휠 리스너는 최초 1회만 등록 (재렌더마다 누적 등록되던 버그 수정) */
     if (!svg._navBound) {
@@ -672,13 +726,12 @@
     if (svg) clearRelations(svg);
   }
 
-  let _bandResizeTimer = null;
+  let _radResizeTimer = null;
   window.addEventListener('resize', function () {
     if (!isGraphView) return;
-    clearTimeout(_bandResizeTimer);
-    _bandResizeTimer = setTimeout(function () { initGraph(); }, 200);
+    clearTimeout(_radResizeTimer);
+    _radResizeTimer = setTimeout(function () { initGraph(); }, 200);
   });
-
   /* ========== Search ========== */
 
   const searchInput = document.getElementById('search-input');
