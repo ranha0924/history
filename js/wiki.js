@@ -643,10 +643,12 @@
   function clampVB(x, y, vb, svg) {
     const b = svg._bounds;
     if (!b) return [x, y];
-    return [
-      Math.min(Math.max(x, b.minX), Math.max(b.minX, b.maxX - vb[2])),
-      Math.min(Math.max(y, b.minY), Math.max(b.minY, b.maxY - vb[3]))
-    ];
+    /* 콘텐츠가 화면보다 작은 축은 팬 범위가 없으므로 중앙에 고정 */
+    function axis(v, min, max, span) {
+      if (max - min <= span) return (min + max) / 2 - span / 2;
+      return Math.min(Math.max(v, min), max - span);
+    }
+    return [axis(x, b.minX, b.maxX, vb[2]), axis(y, b.minY, b.maxY, vb[3])];
   }
 
   function setupPanning(svg) {
