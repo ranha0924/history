@@ -3,6 +3,7 @@
   initPage('wiki');
 
   const STORAGE_KEY = 'korean_history_wiki';
+  const SIG_KEY = 'korean_history_wiki_sig';
   const ERAS = ['전체', '고조선', '삼국', '남북국', '고려', '조선', '근현대'];
   const CATEGORIES = ['전체', '인물', '사건', '제도', '문화'];
   const ERA_COLORS = {
@@ -18,10 +19,30 @@
 
   /* ========== Data Persistence ========== */
 
+  /* WIKI_DATA(기본 콘텐츠)의 서명. 콘텐츠가 바뀌면 값이 달라져,
+     예전에 방문해 localStorage에 옛 데이터가 남아 있는 브라우저도 갱신을 받는다. */
+  function dataSignature() {
+    const str = JSON.stringify(WIKI_DATA);
+    let h = 5381;
+    for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+    return String(h);
+  }
+
   function loadData() {
+    const signature = dataSignature();
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
+    const storedSig = localStorage.getItem(SIG_KEY);
+
+    if (stored && storedSig === signature) {
       wikiItems = JSON.parse(stored);
+    } else if (stored) {
+      /* 기본 콘텐츠가 갱신됨: 최신 기본 데이터로 교체하되,
+         사용자가 직접 추가한 항목(기본 id에 없는 항목)은 그대로 보존한다. */
+      const prev = JSON.parse(stored);
+      const baseIds = new Set(WIKI_DATA.map(i => i.id));
+      const userAdded = prev.filter(i => !baseIds.has(i.id));
+      wikiItems = JSON.parse(JSON.stringify(WIKI_DATA)).concat(userAdded);
+      saveData();
     } else {
       wikiItems = JSON.parse(JSON.stringify(WIKI_DATA));
       saveData();
@@ -30,6 +51,7 @@
 
   function saveData() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(wikiItems));
+    localStorage.setItem(SIG_KEY, dataSignature());
     relationCache = null; /* 항목 변경 시 관계 그래프 재계산 */
   }
 
