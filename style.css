@@ -614,6 +614,20 @@ img { max-width: 100%; }
   font-weight: 400;
 }
 
+.date-convention-note {
+  font-size: 12.5px;
+  color: var(--text-3);
+  line-height: 1.6;
+  margin: -4px 0 16px;
+  padding: 10px 14px;
+  background: var(--bg-hover);
+  border-radius: 8px;
+}
+.date-convention-note strong {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
 .news-card {
   background: var(--bg-card);
   border-radius: 12px;
