@@ -43,7 +43,10 @@ function renderFooter() {
   const footer = document.getElementById('footer');
   if (!footer) return;
   footer.className = 'footer';
-  footer.innerHTML = '<p>한국사 탐험 &copy; 2026 &mdash; 역사를 통해 미래를 배우다</p>';
+  footer.innerHTML = `
+    <p class="footer-sources">참고 자료 &middot; 국사편찬위원회 우리역사넷, 한국학중앙연구원 「한국민족문화대백과사전」, 고등학교 「한국사」 교과서, 그리고 「삼국사기」·「삼국유사」·「고려사」·「조선왕조실록」 등 원 사료를 참고했습니다.</p>
+    <p>한국사 탐험 &copy; 2026 &mdash; 역사를 통해 미래를 배우다</p>
+  `;
 }
 
 /* ===== Badges ===== */
